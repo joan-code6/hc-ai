@@ -125,7 +125,7 @@ auth.get("/login", async (c) => {
           slackId: testSlackId,
           email: testEmail,
           name: testName,
-          isIdvVerified: false,
+          isIdvVerified: true,
         })
         .returning();
     }
