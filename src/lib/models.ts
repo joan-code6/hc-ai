@@ -59,7 +59,7 @@ export const openRouterHeaders = {
 function createModelsFetcher(
   key: string,
   endpoint: string,
-  allowedModels: string[],
+  _allowedModels: string[],
 ): () => Promise<OpenRouterModelsResponse> {
   return async () => {
     const state = cacheState[key];

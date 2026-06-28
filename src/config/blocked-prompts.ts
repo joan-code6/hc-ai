@@ -66,12 +66,4 @@ export default [
 
   // Codex CLI
   "You are a coding agent running in the Codex CLI, a terminal-based coding assistant. Codex CLI is an open source project led by OpenAI. You are expected to be precise, safe, and helpful",
-  "You are Codex, a coding agent based on GPT-5",
-  "You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.",
-  "Runs a command in a PTY, returning output or a session ID for ongoing interaction",
-
-  // Trae
-  "This tool is Trae's context engine. It:\n1. Takes in a natural language description of the code you are looking for;\n2. Uses a proprietary retrieval/embedding model suite that produces the highest-quality recall of relevant code snippets from across the codebase;\n3. Maintains a real-time index of the codebase, so the results are always up-to-date and reflects",
-  '- Fast file pattern matching tool that works with any codebase size\n- Supports glob patterns like "/*.js" or "src//*.ts"\n- Returns matching file paths sorted by modification time',
-  "Use this tool when you need to ask the user questions during execution. This allows you to:\n1. Gather user preferences or requirements\n2. Clarify ambiguous instructions\n3. Get decisions on implementation choices as you work",
 ];
