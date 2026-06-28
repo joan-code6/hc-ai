@@ -2,15 +2,19 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { stream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-
 import { allowedImageModels, env } from "../../../env";
+import { getFlaggedCategories, trigger_review } from "../../../lib/moderation";
+import {
+  getUserFlagSettings,
+  recordViolationEvent,
+  reviewContent,
+  shouldReview,
+} from "../../../lib/review";
 import { requireApiKey } from "../../../middleware/auth";
-import { checkSpendingLimit, reserveCharge } from "../../../middleware/limits";
 import type { AppVariables } from "../../../types";
 import {
   apiHeaders,
   type Ctx,
-  estimateUpstreamCost,
   logRequest,
   MODEL_POOL,
   type ProxyReq,
@@ -20,60 +24,203 @@ import {
   standardLimiter,
 } from "../shared";
 
-// Conservative fixed reservation for image generation. Real cost replaces
-// this on log; the point is just to make a single oversized burst impossible
-// when the user is already near their daily cap.
-const IMAGE_GENERATION_RESERVATION = 0.25;
-const UPSTREAM_HEADER_TIMEOUT_MS = 5_000;
-
 const general = new Hono<{ Variables: AppVariables }>();
 
-async function fetchWithHeaderTimeout(
-  url: string,
-  init: RequestInit,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    UPSTREAM_HEADER_TIMEOUT_MS,
-  );
+type ChatMessage = {
+  role?: string;
+  content?: unknown;
+};
 
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch (error) {
-    if (controller.signal.aborted) {
-      throw new HTTPException(504, {
-        message: `Upstream did not return response headers within ${UPSTREAM_HEADER_TIMEOUT_MS}ms`,
-      });
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
+type ModerationBody = {
+  messages?: ChatMessage[];
+  input?: unknown;
+  prompt?: unknown;
+};
+
+const collectTextFromContent = (value: unknown, bucket: string[]) => {
+  if (!value) return;
+  if (typeof value === "string") {
+    if (value.trim().length > 0) bucket.push(value);
+    return;
   }
+  if (Array.isArray(value)) {
+    for (const item of value) collectTextFromContent(item, bucket);
+    return;
+  }
+  if (typeof value !== "object") return;
+
+  const obj = value as Record<string, unknown>;
+
+  if (typeof obj.text === "string") bucket.push(obj.text);
+  if (typeof obj.input_text === "string") bucket.push(obj.input_text);
+  if (typeof obj.output_text === "string") bucket.push(obj.output_text);
+  if (typeof obj.content === "string") bucket.push(obj.content);
+
+  if (Array.isArray(obj.content)) {
+    collectTextFromContent(obj.content, bucket);
+  }
+  if (obj.message) {
+    collectTextFromContent(obj.message, bucket);
+  }
+};
+
+function extractContentForModeration(body: ModerationBody): string[] {
+  const content: string[] = [];
+
+  if (body.messages && Array.isArray(body.messages)) {
+    for (const msg of body.messages) {
+      collectTextFromContent(msg.content, content);
+    }
+  }
+
+  if (body.input) {
+    collectTextFromContent(body.input, content);
+  }
+
+  if (body.prompt) {
+    collectTextFromContent(body.prompt, content);
+  }
+
+  return content;
+}
+
+function extractOutputForModeration(data: unknown): string[] {
+  const content: string[] = [];
+  if (!data || typeof data !== "object") return content;
+
+  const obj = data as Record<string, unknown>;
+  const choices = obj.choices;
+  const output = obj.output;
+
+  if (Array.isArray(choices)) {
+    for (const choice of choices) {
+      const choiceObj = choice as Record<string, unknown>;
+      collectTextFromContent(choiceObj.message, content);
+      collectTextFromContent(choiceObj.text, content);
+      collectTextFromContent(choiceObj.delta, content);
+    }
+  }
+
+  if (Array.isArray(output)) {
+    for (const item of output) {
+      collectTextFromContent(item, content);
+    }
+  }
+
+  collectTextFromContent(obj.output_text, content);
+
+  return content;
 }
 
 async function handleProxy(c: Ctx, endpoint: string) {
   const start = Date.now();
   let body: ProxyReq = { model: "unknown" };
+  const user = c.get("user");
 
   try {
     body = (await c.req.json()) as ProxyReq;
     body.model = resolveModel(body.model, MODEL_POOL);
-    body.user = `user_${c.get("user").id}`;
+    body.user = `user_${user.id}`;
     body.usage = { include: true };
 
-    await reserveCharge(c, await estimateUpstreamCost(body));
-
-    const res = await fetchWithHeaderTimeout(
-      `${env.OPENAI_API_URL}/v1/${endpoint}`,
-      {
-        method: "POST",
-        headers: apiHeaders(c),
-        body: JSON.stringify(body),
-      },
+    const flagSettings = await getUserFlagSettings(user.id);
+    const reviewDecision = shouldReview(
+      user.id,
+      (user.reviewStatus || "normal") as
+        | "normal"
+        | "flagged"
+        | "strict"
+        | "banned",
+      flagSettings.optInForcedReview,
     );
+    const countViolations = !flagSettings.optInForcedReview;
 
-    if (!body.stream && endpoint !== "embeddings") {
+    if (user.reviewStatus === "banned") {
+      return c.json({ error: "Account under review. Contact support." }, 403);
+    }
+
+    const inputContent = extractContentForModeration(body as ModerationBody);
+
+    if (reviewDecision.blocking && inputContent.length > 0) {
+      let inputResult = null;
+      try {
+        inputResult = await trigger_review(inputContent, { allowSkip: false });
+      } catch (_error) {
+        throw new HTTPException(503, { message: "Moderation unavailable" });
+      }
+
+      if (inputResult?.flagged) {
+        const categories = getFlaggedCategories(inputResult);
+        await recordViolationEvent(
+          user.id,
+          "input",
+          categories,
+          inputContent.join(" "),
+          { countTowardsUser: countViolations },
+        );
+        return c.json(
+          {
+            error: "Content prohibited by moderation",
+            categories,
+          },
+          400,
+        );
+      }
+    }
+
+    const res = await fetch(`${env.OPENAI_API_URL}/v1/${endpoint}`, {
+      method: "POST",
+      headers: apiHeaders(c),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      return c.json(errorData, res.status as ContentfulStatusCode);
+    }
+
+    const isNonStreaming = !body.stream && endpoint !== "embeddings";
+
+    if (reviewDecision.blocking && isNonStreaming) {
+      const data = (await res.json()) as unknown;
+      const outputSegments = extractOutputForModeration(data);
+      const outputContent = outputSegments.join(" ").trim();
+
+      if (outputContent) {
+        let outputResult = null;
+        try {
+          outputResult = await trigger_review([outputContent], {
+            allowSkip: false,
+          });
+        } catch (_error) {
+          throw new HTTPException(503, { message: "Moderation unavailable" });
+        }
+
+        if (outputResult?.flagged) {
+          const categories = getFlaggedCategories(outputResult);
+          await recordViolationEvent(
+            user.id,
+            "output",
+            categories,
+            outputContent,
+            { countTowardsUser: countViolations },
+          );
+          return c.json(
+            {
+              error: "Content prohibited by moderation",
+              categories,
+            },
+            400,
+          );
+        }
+      }
+
+      await logRequest(c, body, data, resolveUsage(data), Date.now() - start);
+
+      return c.json(data, res.status as ContentfulStatusCode);
+    }
+
+    if (isNonStreaming) {
       // For non-streaming requests, we still need to keep Cloudflare alive
       // (524 timeout ~100s). We write leading whitespace — valid before any
       // JSON document per RFC 8259 — then flush the real payload once
@@ -95,7 +242,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
         }, 10_000);
 
         try {
-          const data = await res.json();
+          const data = (await res.json()) as unknown;
           clearInterval(heartbeat);
           await logRequest(
             c,
@@ -104,10 +251,104 @@ async function handleProxy(c: Ctx, endpoint: string) {
             resolveUsage(data),
             Date.now() - start,
           );
+
+          const outputSegments = extractOutputForModeration(data);
+          const outputContent = outputSegments.join(" ").trim();
+
+          if (reviewDecision.shouldReview) {
+            const reviewInput = inputContent.length > 0;
+            const reviewOutput = outputContent.length > 0;
+            if (reviewInput || reviewOutput) {
+              reviewContent(user.id, inputContent, outputContent, {
+                countTowardsUser: countViolations,
+                reviewInput,
+                reviewOutput,
+              }).catch(console.error);
+            }
+          }
+
           await s.write(JSON.stringify(data));
         } catch (e) {
           clearInterval(heartbeat);
           throw e;
+        }
+      });
+    }
+
+    if (reviewDecision.blocking && body.stream && endpoint !== "embeddings") {
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      const chunks: Uint8Array[] = [];
+      const chunkText: string[] = [];
+      let usage = { prompt: 0, completion: 0, total: 0, cost: 0 };
+      let outputContent = "";
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) chunks.push(value);
+        const part = decoder.decode(value, { stream: true });
+        chunkText.push(part);
+
+        for (const line of part
+          .split("\n")
+          .filter((l) => l.startsWith("data: "))) {
+          const raw = line.slice(6).trim();
+          if (raw !== "[DONE]") {
+            try {
+              const json = JSON.parse(raw);
+              const chunkUsage = resolveUsage(json);
+              if (chunkUsage.total > 0 || chunkUsage.cost > 0) {
+                usage = chunkUsage;
+              }
+              const outputSegments = extractOutputForModeration(json);
+              if (outputSegments.length > 0) {
+                outputContent += outputSegments.join("");
+              }
+            } catch {}
+          }
+        }
+      }
+
+      await logRequest(
+        c,
+        body,
+        { stream: true, content: chunkText.join("\n") },
+        usage,
+        Date.now() - start,
+      );
+
+      if (outputContent.trim().length > 0) {
+        let outputResult = null;
+        try {
+          outputResult = await trigger_review([outputContent], {
+            allowSkip: false,
+          });
+        } catch (_error) {
+          throw new HTTPException(503, { message: "Moderation unavailable" });
+        }
+
+        if (outputResult?.flagged) {
+          const categories = getFlaggedCategories(outputResult);
+          await recordViolationEvent(
+            user.id,
+            "output",
+            categories,
+            outputContent,
+            { countTowardsUser: countViolations },
+          );
+          return c.json(
+            { error: "Content prohibited by moderation", categories },
+            400,
+          );
+        }
+      }
+
+      return stream(c, async (s) => {
+        c.header("Content-Type", "text/event-stream");
+        c.status(res.status as ContentfulStatusCode);
+        for (const chunk of chunks) {
+          await s.write(chunk);
         }
       });
     }
@@ -119,6 +360,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
         decoder = new TextDecoder(),
         chunks: string[] = [];
       let usage = { prompt: 0, completion: 0, total: 0, cost: 0 };
+      let outputContent = "";
 
       while (reader) {
         const { done, value } = await reader.read();
@@ -131,13 +373,19 @@ async function handleProxy(c: Ctx, endpoint: string) {
           .split("\n")
           .filter((l) => l.startsWith("data: "))) {
           const raw = line.slice(6).trim();
-          if (raw !== "[DONE]")
+          if (raw !== "[DONE]") {
             try {
-              const chunkUsage = resolveUsage(JSON.parse(raw));
+              const json = JSON.parse(raw);
+              const chunkUsage = resolveUsage(json);
               if (chunkUsage.total > 0 || chunkUsage.cost > 0) {
                 usage = chunkUsage;
               }
+              const outputSegments = extractOutputForModeration(json);
+              if (outputSegments.length > 0) {
+                outputContent += outputSegments.join("");
+              }
             } catch {}
+          }
         }
       }
       await logRequest(
@@ -147,6 +395,19 @@ async function handleProxy(c: Ctx, endpoint: string) {
         usage,
         Date.now() - start,
       );
+
+      // Review output content if async review was scheduled
+      if (reviewDecision.shouldReview) {
+        const reviewInput = inputContent.length > 0;
+        const reviewOutput = outputContent.trim().length > 0;
+        if (reviewInput || reviewOutput) {
+          reviewContent(user.id, inputContent, outputContent, {
+            countTowardsUser: countViolations,
+            reviewInput,
+            reviewOutput,
+          }).catch(console.error);
+        }
+      }
     });
   } catch (error) {
     const duration = Date.now() - start;
@@ -160,26 +421,23 @@ async function handleProxy(c: Ctx, endpoint: string) {
       duration,
     );
 
-    if (error instanceof HTTPException) throw error;
+    if (error instanceof HTTPException) {
+      throw error;
+    }
 
     throw new HTTPException(500, { message: "Internal server error" });
   }
 }
 
 for (const ep of ["chat/completions", "responses", "embeddings"])
-  general.post(
-    `/${ep}`,
-    requireApiKey,
-    standardLimiter,
-    checkSpendingLimit,
-    (c) => handleProxy(c, ep),
+  general.post(`/${ep}`, requireApiKey, standardLimiter, (c) =>
+    handleProxy(c, ep),
   );
 
 general.post(
   "/images/generations",
   requireApiKey,
   standardLimiter,
-  checkSpendingLimit,
   async (c) => {
     const start = Date.now();
     const body = (await c.req.json()) as {
@@ -192,8 +450,6 @@ general.post(
       body.model || allowedImageModels[0],
       allowedImageModels,
     );
-
-    await reserveCharge(c, IMAGE_GENERATION_RESERVATION);
 
     const res = await fetch(`${env.OPENAI_API_URL}/v1/chat/completions`, {
       method: "POST",
