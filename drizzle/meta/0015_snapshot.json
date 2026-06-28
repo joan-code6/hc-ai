@@ -1,5 +1,5 @@
 {
-  "id": "f8d248c7-bdbd-465d-bf51-b1c305fe37fb",
+  "id": "071dd7b7-bb73-47d0-9144-6c62ab20c673",
   "prevId": "1a297d39-d795-439d-a7a6-fa8aa25d5ac2",
   "version": "7",
   "dialect": "postgresql",
@@ -115,8 +115,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.pending_charges": {
-      "name": "pending_charges",
+    "public.content_violations": {
+      "name": "content_violations",
       "schema": "",
       "columns": {
         "id": {
@@ -132,11 +132,29 @@
           "primaryKey": false,
           "notNull": true
         },
-        "estimated_cost": {
-          "name": "estimated_cost",
-          "type": "numeric(10, 8)",
+        "request_log_id": {
+          "name": "request_log_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -147,8 +165,8 @@
         }
       },
       "indexes": {
-        "pending_charges_user_created_idx": {
-          "name": "pending_charges_user_created_idx",
+        "violations_user_created_idx": {
+          "name": "violations_user_created_idx",
           "columns": [
             {
               "expression": "user_id",
@@ -167,16 +185,40 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "violations_request_log_idx": {
+          "name": "violations_request_log_idx",
+          "columns": [
+            {
+              "expression": "request_log_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
-        "pending_charges_user_id_users_id_fk": {
-          "name": "pending_charges_user_id_users_id_fk",
-          "tableFrom": "pending_charges",
+        "content_violations_user_id_users_id_fk": {
+          "name": "content_violations_user_id_users_id_fk",
+          "tableFrom": "content_violations",
           "tableTo": "users",
           "columnsFrom": ["user_id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "content_violations_request_log_id_request_logs_id_fk": {
+          "name": "content_violations_request_log_id_request_logs_id_fk",
+          "tableFrom": "content_violations",
+          "tableTo": "request_logs",
+          "columnsFrom": ["request_log_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -506,6 +548,72 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.user_flag_settings": {
+      "name": "user_flag_settings",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "opt_in_forced_review": {
+          "name": "opt_in_forced_review",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "flag_settings_user_idx": {
+          "name": "flag_settings_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_flag_settings_user_id_users_id_fk": {
+          "name": "user_flag_settings_user_id_users_id_fk",
+          "tableFrom": "user_flag_settings",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.users": {
       "name": "users",
       "schema": "",
@@ -593,6 +701,33 @@
           "primaryKey": false,
           "notNull": false
         },
+        "review_status": {
+          "name": "review_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'normal'"
+        },
+        "violation_count_week": {
+          "name": "violation_count_week",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "violation_count_month": {
+          "name": "violation_count_month",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_violation_at": {
+          "name": "last_violation_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -644,6 +779,21 @@
           "columns": [
             {
               "expression": "is_idv_verified",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "users_review_status_idx": {
+          "name": "users_review_status_idx",
+          "columns": [
+            {
+              "expression": "review_status",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
