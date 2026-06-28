@@ -24,6 +24,7 @@ import global from "./routes/global";
 import internal from "./routes/internal";
 import keys from "./routes/keys";
 import models from "./routes/models";
+import admin from "./routes/admin";
 import proxy from "./routes/proxy";
 import replicate from "./routes/replicate";
 import up from "./routes/up";
@@ -85,6 +86,7 @@ app.route("/global", global);
 app.route("/internal", internal);
 app.route("/keys", keys);
 app.route("/models", models);
+app.route("/admin", admin);
 app.route("/replicate", replicate);
 app.route("/up", up);
 
