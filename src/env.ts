@@ -9,8 +9,8 @@ const envSchema = type({
   SLACK_GEOBLOCK_WEBHOOK_URL: "string.url",
   OPENAI_API_URL: "string",
   OPENAI_API_KEY: "string",
-  OPENAI_MODERATION_API_KEY: "string",
-  OPENAI_MODERATION_API_URL: "string",
+  "OPENAI_MODERATION_API_KEY?": "string",
+  "OPENAI_MODERATION_API_URL?": "string",
   ALLOWED_LANGUAGE_MODELS: "string",
   ALLOWED_IMAGE_MODELS: "string",
   ALLOWED_EMBEDDING_MODELS: "string",
@@ -26,6 +26,14 @@ const envSchema = type({
   POSTHOG_API_HOST: "string = 'https://us.i.posthog.com/'",
   MISTRAL_API_KEY: "string",
   EXA_API_KEY: "string",
+  "REVIEW_SAMPLE_RATE?": "string.numeric.parse",
+  "WEEKLY_VIOLATION_THRESHOLD?": "string.numeric.parse",
+  "MONTHLY_VIOLATION_THRESHOLD?": "string.numeric.parse",
+  "STRICT_REVIEW_THRESHOLD?": "string.numeric.parse",
+  "INTERNAL_API_KEY?": "string",
+  // Admin panel credentials (defaults)
+  ADMIN_USERNAME: "string = 'admin'",
+  ADMIN_PASSWORD: "string = 'test'",
 });
 
 const result = envSchema(process.env);
@@ -52,3 +60,10 @@ export const allowedImageModels = parseModelList(env.ALLOWED_IMAGE_MODELS);
 export const allowedEmbeddingModels = parseModelList(
   env.ALLOWED_EMBEDDING_MODELS,
 );
+
+export const reviewConfig = {
+  sampleRate: env.REVIEW_SAMPLE_RATE ?? 1,
+  weeklyThreshold: env.WEEKLY_VIOLATION_THRESHOLD ?? 2,
+  monthlyThreshold: env.MONTHLY_VIOLATION_THRESHOLD ?? 5,
+  strictThreshold: env.STRICT_REVIEW_THRESHOLD ?? 2,
+};
