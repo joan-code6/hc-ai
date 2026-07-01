@@ -6,6 +6,9 @@ import { db } from "../db";
 import { requestLogs } from "../db/schema";
 import type { AppVariables } from "../types";
 
+const overLimitMessage = (limit: number) =>
+  `Daily spending limit of $${limit} reached. Need a higher limit? hey@mahadk.com`;
+
 export async function checkSpendingLimit(
   c: Context<{ Variables: AppVariables }>,
   next: Next,
@@ -42,7 +45,7 @@ export async function checkSpendingLimit(
 
       if (spent >= limit) {
         throw new HTTPException(429, {
-          message: `Daily spending limit of $${limit} reached. Need a higher limit? hey@mahadk.com`,
+          message: overLimitMessage(limit),
         });
       }
 

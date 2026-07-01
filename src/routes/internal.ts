@@ -1,12 +1,12 @@
 import { arktypeValidator } from "@hono/arktype-validator";
 import * as Sentry from "@sentry/bun";
 import { type } from "arktype";
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { type Context, Hono, type Next } from "hono";
 import { getCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
-import { apiKeys, users } from "../db/schema";
+import { apiKeys, sessions, users } from "../db/schema";
 import { env } from "../env";
 import {
   clearUserReviewStatus,
@@ -18,10 +18,25 @@ import {
 const internal = new Hono();
 
 const requireInternalAuth = async (c: Context, next: Next) => {
-  const adminSession = getCookie(c, "admin_session");
-  if (adminSession === "1") {
-    await next();
-    return;
+  const sessionToken = getCookie(c, "session_token");
+
+  if (sessionToken) {
+    const [result] = await db
+      .select({ user: users })
+      .from(sessions)
+      .innerJoin(users, eq(sessions.userId, users.id))
+      .where(
+        and(
+          eq(sessions.token, sessionToken),
+          gt(sessions.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+
+    if (result?.user.isAdmin) {
+      await next();
+      return;
+    }
   }
 
   const authHeader = c.req.header("Authorization") || "";

@@ -27,11 +27,6 @@ type RecordViolationOptions = {
   countTowardsUser?: boolean;
 };
 
-type PgErrorLike = {
-  message?: string;
-  code?: string;
-};
-
 export function shouldReview(
   _userId: string,
   reviewStatus: ReviewStatus,
@@ -85,28 +80,7 @@ export async function recordViolationEvent(
     contentHash,
   }));
 
-  try {
-    await db.insert(contentViolations).values(values);
-  } catch (e: unknown) {
-    const pgError = (
-      typeof e === "object" && e !== null ? e : {}
-    ) as PgErrorLike;
-    const msg = String(pgError.message || e);
-    // If DB doesn't have the new column yet, retry without it for backwards compatibility
-    if (msg.includes("violation_event_id") || pgError.code === "42703") {
-      const legacyValues = values.map((v) => {
-        const { violationEventId: _violationEventId, ...rest } = v;
-        return rest;
-      });
-      try {
-        await db.insert(contentViolations).values(legacyValues);
-      } catch (e2) {
-        console.error("Failed to record violation (legacy insert):", e2);
-      }
-    } else {
-      console.error("Failed to record violation:", e);
-    }
-  }
+  await db.insert(contentViolations).values(values);
 
   if (options?.countTowardsUser !== false) {
     await updateViolationCounts(userId);

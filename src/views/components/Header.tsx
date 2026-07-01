@@ -125,11 +125,7 @@ export const Header = ({
                 class="w-10 h-10 rounded-full border-2 border-brand-border"
               />
             )}
-            <form
-              action={isAdmin ? "/admin/logout" : "/auth/logout"}
-              method="post"
-              class="inline"
-            >
+            <form action="/auth/logout" method="post" class="inline">
               <button
                 type="submit"
                 class="text-sm font-medium text-red-500 hover:text-red-600 ml-2 cursor-pointer"
@@ -252,7 +248,7 @@ export const Header = ({
           </span>
         </div>
 
-        <form action={isAdmin ? "/admin/logout" : "/auth/logout"} method="post">
+        <form action="/auth/logout" method="post">
           <button
             type="submit"
             class="text-base font-medium text-red-500 hover:text-red-600 px-2 cursor-pointer"

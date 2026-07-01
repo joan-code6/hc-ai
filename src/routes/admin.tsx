@@ -1,10 +1,8 @@
 import * as Sentry from "@sentry/bun";
 import { count, desc, eq, gte, ilike, or } from "drizzle-orm";
 import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
 import { db } from "../db";
 import { contentViolations, users } from "../db/schema";
-import { env } from "../env";
 import {
   clearUserReviewStatus,
   getAllViolations,
@@ -13,16 +11,17 @@ import {
   recomputeUserCounts,
 } from "../lib/review";
 import { getGlobalStats } from "../lib/stats";
-import { checkAdminCredentials, requireAdmin } from "../middleware/admin";
+import { requireAdmin } from "../middleware/admin";
+import { requireAuth } from "../middleware/auth";
+import type { AppVariables } from "../types";
 import {
-  AdminLoginView,
   AdminUsersView,
   AdminUserView,
   AdminView,
   AdminViolationsView,
 } from "../views/admin";
 
-const admin = new Hono();
+const admin = new Hono<{ Variables: AppVariables }>();
 
 type AdminUserSearchResult = {
   id: string;
@@ -33,42 +32,7 @@ type AdminUserSearchResult = {
   violationCountMonth: number;
 };
 
-admin.get("/login", async (c) => {
-  return c.html(<AdminLoginView error={null} />);
-});
-
-admin.post("/login", async (c) => {
-  const form = await c.req.formData();
-  const username = String(form.get("username") || "");
-  const password = String(form.get("password") || "");
-
-  if (!checkAdminCredentials(username, password)) {
-    return c.html(<AdminLoginView error={"Invalid credentials"} />);
-  }
-
-  setCookie(c, "admin_session", "1", {
-    httpOnly: true,
-    secure: env.NODE_ENV === "production",
-    sameSite: "Lax",
-    path: "/",
-    maxAge: 60 * 60 * 8,
-  });
-
-  return c.redirect("/admin");
-});
-
-admin.post("/logout", async (c) => {
-  setCookie(c, "admin_session", "", {
-    httpOnly: true,
-    secure: env.NODE_ENV === "production",
-    sameSite: "Lax",
-    path: "/",
-    maxAge: 0,
-  });
-  return c.redirect("/admin/login");
-});
-
-admin.get("/", requireAdmin, async (c) => {
+admin.get("/", requireAuth, requireAdmin, async (c) => {
   const stats = await getGlobalStats();
 
   // fetch moderation stats
@@ -132,11 +96,12 @@ admin.get("/", requireAdmin, async (c) => {
       stats={stats}
       moderationStats={moderationStats}
       bannedUsers={banned}
+      user={c.get("user")}
     />,
   );
 });
 
-admin.get("/violations", requireAdmin, async (c) => {
+admin.get("/violations", requireAuth, requireAdmin, async (c) => {
   const status = c.req.query("status") || "all";
   let violations = await getAllViolations(500);
 
@@ -147,12 +112,16 @@ admin.get("/violations", requireAdmin, async (c) => {
   }
 
   return c.html(
-    <AdminViolationsView violations={violations} status={status} />,
+    <AdminViolationsView
+      violations={violations}
+      status={status}
+      user={c.get("user")}
+    />,
   );
 });
 
 // Mark a violation as dismissed (false positive)
-admin.post("/violations/:id/dismiss", requireAdmin, async (c) => {
+admin.post("/violations/:id/dismiss", requireAuth, requireAdmin, async (c) => {
   const id = c.req.param("id") as string;
   // fetch violation to get userId
   const [v] = await db
@@ -179,7 +148,7 @@ admin.post("/violations/:id/dismiss", requireAdmin, async (c) => {
   return c.redirect(c.req.header("Referer") || "/admin/violations");
 });
 
-admin.post("/users/:id/ban", requireAdmin, async (c) => {
+admin.post("/users/:id/ban", requireAuth, requireAdmin, async (c) => {
   const id = c.req.param("id") as string;
   await db
     .update(users)
@@ -188,14 +157,14 @@ admin.post("/users/:id/ban", requireAdmin, async (c) => {
   return c.redirect(c.req.header("Referer") || `/admin/users/${id}`);
 });
 
-admin.post("/users/:id/unban", requireAdmin, async (c) => {
+admin.post("/users/:id/unban", requireAuth, requireAdmin, async (c) => {
   const id = c.req.param("id") as string;
   await clearUserReviewStatus(id);
   await db.update(users).set({ isBanned: false }).where(eq(users.id, id));
   return c.redirect(c.req.header("Referer") || "/admin/violations");
 });
 
-admin.get("/users", requireAdmin, async (c) => {
+admin.get("/users", requireAuth, requireAdmin, async (c) => {
   const q = c.req.query("q") || "";
   const status = c.req.query("status") || "all";
 
@@ -260,10 +229,17 @@ admin.get("/users", requireAdmin, async (c) => {
       .limit(50);
   }
 
-  return c.html(<AdminUsersView query={q} status={status} results={results} />);
+  return c.html(
+    <AdminUsersView
+      query={q}
+      status={status}
+      results={results}
+      user={c.get("user")}
+    />,
+  );
 });
 
-admin.get("/users/:id", requireAdmin, async (c) => {
+admin.get("/users/:id", requireAuth, requireAdmin, async (c) => {
   const id = c.req.param("id") as string;
   const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (!user) return c.text("User not found", 404);
@@ -272,7 +248,12 @@ admin.get("/users/:id", requireAdmin, async (c) => {
   const stats = await getUserViolationStats(id);
 
   return c.html(
-    <AdminUserView user={user} violations={violations} stats={stats} />,
+    <AdminUserView
+      user={user}
+      violations={violations}
+      stats={stats}
+      currentUser={c.get("user")}
+    />,
   );
 });
 

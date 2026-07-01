@@ -32,6 +32,7 @@ export const users = pgTable(
     isIdvVerified: boolean("is_idv_verified").notNull().default(false),
     skipIdv: boolean("skip_idv").notNull().default(false),
     isBanned: boolean("is_banned").notNull().default(false),
+    isAdmin: boolean("is_admin").notNull().default(false),
     agentBannerDismissedAt: timestamp("agent_banner_dismissed_at"),
     reviewStatus: text("review_status").notNull().default("normal"), // "normal" | "flagged" | "strict" | "banned"
     violationCountWeek: integer("violation_count_week").notNull().default(0),
@@ -45,6 +46,7 @@ export const users = pgTable(
     index("users_email_idx").on(table.email),
     index("users_idv_verified_idx").on(table.isIdvVerified),
     index("users_review_status_idx").on(table.reviewStatus),
+    index("users_is_admin_idx").on(table.isAdmin),
   ],
 );
 

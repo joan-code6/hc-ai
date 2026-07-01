@@ -1,4 +1,4 @@
-import type { Stats } from "../types";
+import type { Stats, User } from "../types";
 import { Header } from "./components/Header";
 import { StatCard } from "./components/StatCard";
 import { Layout } from "./layout";
@@ -71,68 +71,6 @@ type ModerationStats = {
   totalUsers: number;
 };
 
-export const AdminLoginView = ({ error }: { error: string | null }) => {
-  return (
-    <Layout title="Admin Login">
-      <div class="w-full min-h-screen flex items-center justify-center px-4 py-12">
-        <div class="w-full max-w-md">
-          <div class="text-center mb-8">
-            <div class="w-14 h-14 bg-brand-primary rounded-2xl flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4 transform -rotate-3">
-              h
-            </div>
-            <h1 class="text-3xl font-bold text-brand-heading">Admin</h1>
-            <p class="text-brand-text text-sm mt-2">Access the admin panel</p>
-          </div>
-
-          <div class="bg-brand-surface border-2 border-brand-border rounded-2xl p-8">
-            {error && (
-              <div class="mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-sm text-red-400 font-medium">
-                {error}
-              </div>
-            )}
-            <form method="post" action="/admin/login" class="space-y-4">
-              <div>
-                <label
-                  for="admin-username"
-                  class="block text-sm font-bold text-brand-heading mb-2"
-                >
-                  Username
-                </label>
-                <input
-                  id="admin-username"
-                  name="username"
-                  autofocus
-                  class="w-full px-4 py-3 rounded-xl bg-brand-bg border-2 border-brand-border text-brand-text focus:border-brand-primary outline-none transition-colors"
-                />
-              </div>
-              <div>
-                <label
-                  for="admin-password"
-                  class="block text-sm font-bold text-brand-heading mb-2"
-                >
-                  Password
-                </label>
-                <input
-                  id="admin-password"
-                  type="password"
-                  name="password"
-                  class="w-full px-4 py-3 rounded-xl bg-brand-bg border-2 border-brand-border text-brand-text focus:border-brand-primary outline-none transition-colors"
-                />
-              </div>
-              <button
-                type="submit"
-                class="w-full px-4 py-3 rounded-xl bg-brand-primary text-white font-bold hover:bg-brand-primary-hover transition-all mt-6"
-              >
-                Sign In
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    </Layout>
-  );
-};
-
 const StatusBadge = ({ status }: { status: string }) => {
   const colors: Record<string, { bg: string; text: string; label: string }> = {
     normal: { bg: "bg-green-500/10", text: "text-green-400", label: "Normal" },
@@ -195,14 +133,16 @@ export const AdminView = ({
   stats,
   moderationStats,
   bannedUsers,
+  user,
 }: {
   stats: Stats;
   moderationStats: ModerationStats;
   bannedUsers: AdminBannedUser[];
+  user: User;
 }) => {
   return (
     <Layout title="Admin Dashboard">
-      <Header title="Admin" user={null} isAdmin />
+      <Header title="Admin" user={user} isAdmin />
       <div class="w-full max-w-7xl mx-auto px-4 py-8">
         <AdminTabs active="dashboard" />
 
@@ -353,9 +293,11 @@ export const AdminView = ({
 export const AdminViolationsView = ({
   violations,
   status,
+  user,
 }: {
   violations: AdminViolationWithUser[];
   status: string;
+  user: User;
 }) => {
   const filterTabs = [
     { key: "all", label: "All" },
@@ -365,7 +307,7 @@ export const AdminViolationsView = ({
 
   return (
     <Layout title="Violations" includeHtmx>
-      <Header title="Admin" user={null} isAdmin />
+      <Header title="Admin" user={user} isAdmin />
       <div class="w-full max-w-7xl mx-auto px-4 py-8">
         <AdminTabs active="violations" />
 
@@ -477,10 +419,12 @@ export const AdminUsersView = ({
   query,
   status,
   results,
+  user,
 }: {
   query: string;
   status: string;
   results: AdminUserSearchResult[];
+  user: User;
 }) => {
   const statusTabs = [
     { key: "all", label: "All" },
@@ -493,7 +437,7 @@ export const AdminUsersView = ({
 
   return (
     <Layout title="Users" includeHtmx>
-      <Header title="Admin" user={null} isAdmin />
+      <Header title="Admin" user={user} isAdmin />
       <div class="w-full max-w-7xl mx-auto px-4 py-8">
         <AdminTabs active="users" />
 
@@ -603,10 +547,12 @@ export const AdminUserView = ({
   user,
   violations,
   stats,
+  currentUser,
 }: {
   user: AdminUserDetail;
   violations: AdminViolationWithLog[];
   stats: AdminUserStats;
+  currentUser: User;
 }) => {
   return (
     <Layout
@@ -614,7 +560,7 @@ export const AdminUserView = ({
       includeHtmx
       includeAlpine
     >
-      <Header title="Admin" user={null} isAdmin />
+      <Header title="Admin" user={currentUser} isAdmin />
       <div class="w-full max-w-7xl mx-auto px-4 py-8">
         {/* Breadcrumbs */}
         <div class="flex items-center gap-2 text-sm text-brand-text mb-6">

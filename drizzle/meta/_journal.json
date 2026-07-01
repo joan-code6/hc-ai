@@ -120,6 +120,27 @@
       "when": 1779302500000,
       "tag": "0016_add_content_column",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779302600000,
+      "tag": "0017_add_violation_event_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779302700000,
+      "tag": "0018_add_violation_dismissed",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1779400000000,
+      "tag": "0019_add_is_admin_to_users",
+      "breakpoints": true
     }
   ]
 }
