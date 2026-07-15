@@ -79,7 +79,7 @@ export const BannedView = ({ user, violations }: BannedViewProps) => {
               You have been banned
             </h1>
             <p class="text-xl text-brand-text/90 mb-4">
-              Hi, {user.name || user.slackId}
+              Hi, {user.name}
             </p>
             <p class="text-lg text-brand-text/80 mb-2">
               Your account has been banned from using Hack Club AI due to
@@ -109,10 +109,10 @@ export const BannedView = ({ user, violations }: BannedViewProps) => {
             <p class="text-brand-text mb-4">
               You can appeal your ban by contacting Mahad on the Hack Club
               Slack. Please explain why you were banned and include your
-              username ({user.name || user.slackId}).
+              username ({user.name}).
             </p>
             <a
-              href="https://hackclub.slack.com/team/@mahad"
+              href="https://slack.hackclub.com/"
               target="_blank"
               rel="noopener noreferrer"
               class="inline-flex items-center gap-2 bg-brand-primary text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-primary-hover transition-colors"

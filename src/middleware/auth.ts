@@ -94,7 +94,7 @@ export async function requireAuth(
       return c.redirect("/");
     }
 
-    if (result.user.isBanned || result.user.reviewStatus === "banned") {
+    if (result.user.reviewStatus === "banned") {
       return c.redirect("/banned");
     }
 
@@ -145,7 +145,7 @@ export async function requireApiKey(
     c.set("apiKey", apiKey.apiKey);
     c.set("user", apiKey.user);
 
-    if (apiKey.user.isBanned || apiKey.user.reviewStatus === "banned") {
+    if (apiKey.user.reviewStatus === "banned") {
       throw new HTTPException(403, {
         message: "You are banned from using this service.",
       });

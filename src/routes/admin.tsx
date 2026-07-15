@@ -10,7 +10,6 @@ import {
   getUserViolationsWithLogs,
   recomputeUserCounts,
 } from "../lib/review";
-import { getGlobalStats } from "../lib/stats";
 import { requireAdmin } from "../middleware/admin";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables } from "../types";
@@ -33,8 +32,6 @@ type AdminUserSearchResult = {
 };
 
 admin.get("/", requireAuth, requireAdmin, async (c) => {
-  const stats = await getGlobalStats();
-
   // fetch moderation stats
   const moderationStats = await Sentry.startSpan(
     { name: "db.select.moderationStats" },
@@ -93,7 +90,6 @@ admin.get("/", requireAuth, requireAdmin, async (c) => {
 
   return c.html(
     <AdminView
-      stats={stats}
       moderationStats={moderationStats}
       bannedUsers={banned}
       user={c.get("user")}
@@ -152,7 +148,7 @@ admin.post("/users/:id/ban", requireAuth, requireAdmin, async (c) => {
   const id = c.req.param("id") as string;
   await db
     .update(users)
-    .set({ isBanned: true, reviewStatus: "banned" })
+    .set({ reviewStatus: "banned" })
     .where(eq(users.id, id));
   return c.redirect(c.req.header("Referer") || `/admin/users/${id}`);
 });
@@ -160,7 +156,6 @@ admin.post("/users/:id/ban", requireAuth, requireAdmin, async (c) => {
 admin.post("/users/:id/unban", requireAuth, requireAdmin, async (c) => {
   const id = c.req.param("id") as string;
   await clearUserReviewStatus(id);
-  await db.update(users).set({ isBanned: false }).where(eq(users.id, id));
   return c.redirect(c.req.header("Referer") || "/admin/violations");
 });
 

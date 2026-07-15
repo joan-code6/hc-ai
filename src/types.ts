@@ -11,7 +11,7 @@ type RequestLog = typeof requestLogs.$inferSelect;
 export type Violation = typeof contentViolations.$inferSelect;
 export type DashboardRequestLog = Pick<
   RequestLog,
-  "id" | "model" | "totalTokens" | "timestamp" | "duration" | "ip"
+  "id" | "model" | "totalTokens" | "timestamp" | "duration" | "ip" | "cost"
 >;
 export type DashboardApiKey = Pick<ApiKey, "id" | "name" | "createdAt"> & {
   keyPreview: string;

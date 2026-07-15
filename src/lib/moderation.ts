@@ -1,4 +1,5 @@
 import { env } from "../env";
+import { localModerationCheck } from "./local-moderation";
 
 export type ModerationCategory =
   | "sexual"
@@ -109,6 +110,22 @@ export async function trigger_review(
     console.error("Error occurred while parsing moderation results:", error);
     throw error;
   }
+}
+
+/**
+ * Fast local pre-filter + optional OpenAI fallback.
+ * Returns immediately if local classifier flags content,
+ * otherwise falls back to the OpenAI moderation API.
+ */
+export async function moderate(
+  content: string[],
+  options?: { allowSkip?: boolean },
+): Promise<ModerationResult> {
+  const localResult = localModerationCheck(content);
+  if (localResult.flagged) {
+    return localResult;
+  }
+  return trigger_review(content, options);
 }
 
 export function getFlaggedCategories(

@@ -1,3 +1,4 @@
+import { formatPrice } from "../lib/price";
 import type { DashboardRequestLog, Stats, User } from "../types";
 import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
@@ -81,6 +82,7 @@ const RecentRequestsTable = ({
         },
         { header: "Model", key: "model" },
         { header: "Tokens", render: (row) => row.totalTokens.toLocaleString() },
+        { header: "Cost", render: (row) => formatPrice(row.cost) },
         { header: "Duration", render: (row) => `${row.duration}ms` },
         { header: "IP", key: "ip" },
       ]}

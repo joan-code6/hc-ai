@@ -16,15 +16,16 @@ activity.get("/activity", requireAuth, async (c) => {
   const [stats, recentLogs, dailySpending] = await Promise.all([
     getUserStats(user.id),
     Sentry.startSpan({ name: "db.select.recentLogs" }, () =>
-      db
-        .select({
-          id: requestLogs.id,
-          model: requestLogs.model,
-          totalTokens: requestLogs.totalTokens,
-          timestamp: requestLogs.timestamp,
-          duration: requestLogs.duration,
-          ip: requestLogs.ip,
-        })
+        db
+          .select({
+            id: requestLogs.id,
+            model: requestLogs.model,
+            totalTokens: requestLogs.totalTokens,
+            timestamp: requestLogs.timestamp,
+            duration: requestLogs.duration,
+            ip: requestLogs.ip,
+            cost: requestLogs.cost,
+          })
         .from(requestLogs)
         .where(eq(requestLogs.userId, user.id))
         .orderBy(desc(requestLogs.timestamp))

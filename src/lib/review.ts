@@ -11,7 +11,7 @@ import { reviewConfig } from "../env";
 import {
   getFlaggedCategories,
   type ModerationCategory,
-  trigger_review,
+  moderate,
 } from "./moderation";
 
 export type ReviewStatus = "normal" | "flagged" | "strict" | "banned";
@@ -169,7 +169,7 @@ export async function reviewContent(
     const reviewOutput = options?.reviewOutput ?? true;
 
     if (reviewInput) {
-      const inputResult = await trigger_review(inputContent);
+      const inputResult = await moderate(inputContent);
 
       if (inputResult.flagged) {
         const categories = getFlaggedCategories(inputResult);
@@ -187,7 +187,7 @@ export async function reviewContent(
     }
 
     if (reviewOutput && outputContent) {
-      const outputResult = await trigger_review([outputContent]);
+      const outputResult = await moderate([outputContent]);
 
       if (outputResult.flagged) {
         const categories = getFlaggedCategories(outputResult);
@@ -333,7 +333,6 @@ export async function clearUserReviewStatus(userId: string) {
     .update(users)
     .set({
       reviewStatus: "normal",
-      isBanned: false,
       violationCountWeek: 0,
       violationCountMonth: 0,
       lastViolationAt: null,

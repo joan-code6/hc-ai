@@ -19,7 +19,7 @@ export default [
   "You are Vivi, an expert AI assistant and exceptional senior software developer",
 
   // Cline
-  "You are Cline, a software engineering AI. Your mission is to execute precisely what is requested - implement exactly what was asked for, with the simplest solution that fulfills all requirements.",
+  "You are Cline, a software engineering AI. Your mission is to execute precisely what was requested - implement exactly what was asked for, with the simplest solution that fulfills all requirements.",
   "You are Cline, a highly skilled software engineer with extensive knowledge in many programming languages, frameworks, design patterns, and best practices.\n\nTOOL USE\n\nYou have access to a set of tools that are executed upon the user's approval. You may use multiple tools",
 
   // Roo Code
@@ -29,7 +29,7 @@ export default [
   // Kilo Code
   '- mode: (required) The slug of the mode to start the new task in (e.g., "code", "debug", "architect").',
   "By specifying line ranges, you can efficiently read specific portions of large files without loading the entire file into memory.",
-  'The tool outputs line-numbered content (e.g. "1 | const x = 1") for easy reference when creating diffs or discussing code',
+  'The tool outputs line-numbered content (e.g., "1 | const x = 1") for easy reference when creating diffs or discussing code',
 
   // Clawdbot/OpenClaw
   "You are a personal assistant running inside Clawdbot",
@@ -66,4 +66,12 @@ export default [
 
   // Codex CLI
   "You are a coding agent running in the Codex CLI, a terminal-based coding assistant. Codex CLI is an open source project led by OpenAI. You are expected to be precise, safe, and helpful",
+  "You are Codex, a coding agent based on GPT-5",
+  "You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.",
+  "Runs a command in a PTY, returning output or a session ID for ongoing interaction",
+
+  // Trae
+  "This tool is Trae's context engine. It:\n1. Takes in a natural language description of the code you are looking for;\n2. Uses a proprietary retrieval/embedding model suite that produces the highest-quality recall of relevant code snippets from across the codebase;\n3. Maintains a real-time index of the codebase, so the results are always up-to-date and reflects",
+  '- Fast file pattern matching tool that works with any codebase size\n- Supports glob patterns like "/*.js" or "src//*.ts"\n- Returns matching file paths sorted by modification time',
+  "Use this tool when you need to ask the user questions during execution. This allows you to:\n1. Gather user preferences or requirements\n2. Clarify ambiguous instructions\n3. Get decisions on implementation choices as you work",
 ];

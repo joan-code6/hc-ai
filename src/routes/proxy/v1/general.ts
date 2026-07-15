@@ -3,7 +3,11 @@ import { HTTPException } from "hono/http-exception";
 import { stream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { allowedImageModels, env } from "../../../env";
-import { getFlaggedCategories, trigger_review } from "../../../lib/moderation";
+import { localModerationCheck } from "../../../lib/local-moderation";
+import {
+  getFlaggedCategories,
+  moderate,
+} from "../../../lib/moderation";
 import {
   getUserFlagSettings,
   recordViolationEvent,
@@ -144,7 +148,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
     if (reviewDecision.blocking && inputContent.length > 0) {
       let inputResult = null;
       try {
-        inputResult = await trigger_review(inputContent, { allowSkip: false });
+        inputResult = await moderate(inputContent, { allowSkip: false });
       } catch (_error) {
         throw new HTTPException(503, { message: "Moderation unavailable" });
       }
@@ -187,17 +191,9 @@ async function handleProxy(c: Ctx, endpoint: string) {
       const outputContent = outputSegments.join(" ").trim();
 
       if (outputContent) {
-        let outputResult = null;
-        try {
-          outputResult = await trigger_review([outputContent], {
-            allowSkip: false,
-          });
-        } catch (_error) {
-          throw new HTTPException(503, { message: "Moderation unavailable" });
-        }
-
-        if (outputResult?.flagged) {
-          const categories = getFlaggedCategories(outputResult);
+        const localResult = localModerationCheck([outputContent]);
+        if (localResult.flagged) {
+          const categories = getFlaggedCategories(localResult);
           await recordViolationEvent(
             user.id,
             "output",
@@ -213,6 +209,12 @@ async function handleProxy(c: Ctx, endpoint: string) {
             400,
           );
         }
+        // Full review in background since local check passed
+        reviewContent(user.id, inputContent, outputContent, {
+          countTowardsUser: countViolations,
+          reviewInput: false,
+          reviewOutput: true,
+        }).catch(console.error);
       }
 
       await logRequest(c, body, data, resolveUsage(data), Date.now() - start);
@@ -276,79 +278,68 @@ async function handleProxy(c: Ctx, endpoint: string) {
     }
 
     if (reviewDecision.blocking && body.stream && endpoint !== "embeddings") {
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      const chunks: Uint8Array[] = [];
-      const chunkText: string[] = [];
-      let usage = { prompt: 0, completion: 0, total: 0, cost: 0 };
-      let outputContent = "";
-
-      while (reader) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) chunks.push(value);
-        const part = decoder.decode(value, { stream: true });
-        chunkText.push(part);
-
-        for (const line of part
-          .split("\n")
-          .filter((l) => l.startsWith("data: "))) {
-          const raw = line.slice(6).trim();
-          if (raw !== "[DONE]") {
-            try {
-              const json = JSON.parse(raw);
-              const chunkUsage = resolveUsage(json);
-              if (chunkUsage.total > 0 || chunkUsage.cost > 0) {
-                usage = chunkUsage;
-              }
-              const outputSegments = extractOutputForModeration(json);
-              if (outputSegments.length > 0) {
-                outputContent += outputSegments.join("");
-              }
-            } catch {}
-          }
-        }
-      }
-
-      await logRequest(
-        c,
-        body,
-        { stream: true, content: chunkText.join("\n") },
-        usage,
-        Date.now() - start,
-      );
-
-      if (outputContent.trim().length > 0) {
-        let outputResult = null;
-        try {
-          outputResult = await trigger_review([outputContent], {
-            allowSkip: false,
-          });
-        } catch (_error) {
-          throw new HTTPException(503, { message: "Moderation unavailable" });
-        }
-
-        if (outputResult?.flagged) {
-          const categories = getFlaggedCategories(outputResult);
-          await recordViolationEvent(
-            user.id,
-            "output",
-            categories,
-            outputContent,
-            { countTowardsUser: countViolations },
-          );
-          return c.json(
-            { error: "Content prohibited by moderation", categories },
-            400,
-          );
-        }
-      }
-
       return stream(c, async (s) => {
         c.header("Content-Type", "text/event-stream");
         c.status(res.status as ContentfulStatusCode);
-        for (const chunk of chunks) {
-          await s.write(chunk);
+        const reader = res.body?.getReader(),
+          decoder = new TextDecoder(),
+          chunks: string[] = [];
+        let usage = { prompt: 0, completion: 0, total: 0, cost: 0 };
+        let outputContent = "";
+
+        while (reader) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const part = decoder.decode(value, { stream: true });
+          chunks.push(part);
+          await s.write(value);
+
+          for (const line of part
+            .split("\n")
+            .filter((l) => l.startsWith("data: "))) {
+            const raw = line.slice(6).trim();
+            if (raw !== "[DONE]") {
+              try {
+                const json = JSON.parse(raw);
+                const chunkUsage = resolveUsage(json);
+                if (chunkUsage.total > 0 || chunkUsage.cost > 0) {
+                  usage = chunkUsage;
+                }
+                const outputSegments = extractOutputForModeration(json);
+                if (outputSegments.length > 0) {
+                  outputContent += outputSegments.join("");
+                }
+              } catch {}
+            }
+          }
+        }
+        await logRequest(
+          c,
+          body,
+          { stream: true, content: chunks.join("\n") },
+          usage,
+          Date.now() - start,
+        );
+
+        // Async background review for blocking streaming
+        if (outputContent.trim().length > 0) {
+          const localResult = localModerationCheck([outputContent]);
+          if (localResult.flagged) {
+            const categories = getFlaggedCategories(localResult);
+            await recordViolationEvent(
+              user.id,
+              "output",
+              categories,
+              outputContent,
+              { countTowardsUser: countViolations },
+            );
+          } else {
+            reviewContent(user.id, inputContent, outputContent, {
+              countTowardsUser: countViolations,
+              reviewInput: false,
+              reviewOutput: true,
+            }).catch(console.error);
+          }
         }
       });
     }

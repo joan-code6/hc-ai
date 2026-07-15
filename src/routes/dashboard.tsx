@@ -43,7 +43,7 @@ dashboard.get("/", async (c) => {
     );
 
     if (result) {
-      if (!result.user.isBanned && result.user.reviewStatus !== "banned") {
+      if (result.user.reviewStatus !== "banned") {
         return c.redirect("/dashboard");
       } else {
         return c.redirect("/banned");
@@ -82,7 +82,7 @@ dashboard.get("/banned", async (c) => {
   }
 
   const user = result.user;
-  if (!user.isBanned && user.reviewStatus !== "banned") {
+  if (user.reviewStatus !== "banned") {
     return c.redirect("/dashboard");
   }
 
