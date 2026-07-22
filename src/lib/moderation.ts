@@ -33,7 +33,7 @@ interface ModerationResponse {
   }[];
 }
 
-async function trigger_review(content: string[]): Promise<ModerationResult> {
+async function triggerReview(content: string[]): Promise<ModerationResult> {
   // ArkType enforces both of these at startup (see env.ts).
   const request = await fetch(env.OPENAI_MODERATION_API_URL, {
     method: "POST",
@@ -94,7 +94,7 @@ async function trigger_review(content: string[]): Promise<ModerationResult> {
  * Classify content using the OpenAI moderation API.
  */
 export async function moderate(content: string[]): Promise<ModerationResult> {
-  return trigger_review(content);
+  return triggerReview(content);
 }
 
 export function getFlaggedCategories(

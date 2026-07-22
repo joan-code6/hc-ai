@@ -236,6 +236,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
             outputContent,
             { countTowardsUser: countViolations },
           );
+          await releasePendingCharge(c);
           return c.json(
             {
               error: "Content prohibited by moderation",
