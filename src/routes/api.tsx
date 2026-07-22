@@ -135,7 +135,8 @@ api.post("/dismiss-agent-banner", async (c) => {
 
 api.get("/violations", async (c) => {
   const user = c.get("user");
-  const limit = parseInt(c.req.query("limit") || "50", 10);
+  const rawLimit = c.req.query("limit");
+  const limit = Math.min(200, Math.max(1, Number.parseInt(rawLimit ?? "50", 10) || 50));
   const [stats, violations, flagSettings] = await Promise.all([
     getUserViolationStats(user.id),
     getUserViolations(user.id, limit),
