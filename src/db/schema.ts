@@ -4,11 +4,19 @@ import {
   integer,
   jsonb,
   numeric,
+  pgEnum,
   pgTable,
   text,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+
+export const reviewStatusEnum = pgEnum("review_status", [
+  "normal",
+  "flagged",
+  "strict",
+  "banned",
+]);
 
 export const users = pgTable(
   "users",
@@ -33,7 +41,7 @@ export const users = pgTable(
     skipIdv: boolean("skip_idv").notNull().default(false),
     isAdmin: boolean("is_admin").notNull().default(false),
     agentBannerDismissedAt: timestamp("agent_banner_dismissed_at"),
-    reviewStatus: text("review_status").notNull().default("normal"), // "normal" | "flagged" | "strict" | "banned"
+    reviewStatus: reviewStatusEnum("review_status").notNull().default("normal"),
     violationCountWeek: integer("violation_count_week").notNull().default(0),
     violationCountMonth: integer("violation_count_month").notNull().default(0),
     lastViolationAt: timestamp("last_violation_at"),
@@ -171,3 +179,26 @@ export const userFlagSettings = pgTable(
   },
   (table) => [index("flag_settings_user_idx").on(table.userId)],
 );
+
+export const pendingCharges = pgTable(
+  "pending_charges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    estimatedCost: numeric("estimated_cost", {
+      precision: 10,
+      scale: 8,
+    }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("pending_charges_user_created_idx").on(
+      table.userId,
+      table.createdAt.desc(),
+    ),
+  ],
+);
+
+export type Violation = typeof contentViolations.$inferSelect;

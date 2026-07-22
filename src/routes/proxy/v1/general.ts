@@ -3,11 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { stream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { allowedImageModels, env } from "../../../env";
-import { localModerationCheck } from "../../../lib/local-moderation";
-import {
-  getFlaggedCategories,
-  moderate,
-} from "../../../lib/moderation";
+import { getFlaggedCategories, moderate } from "../../../lib/moderation";
 import {
   getUserFlagSettings,
   recordViolationEvent,
@@ -15,10 +11,16 @@ import {
   shouldReview,
 } from "../../../lib/review";
 import { requireApiKey } from "../../../middleware/auth";
+import {
+  checkSpendingLimit,
+  releasePendingCharge,
+  reserveCharge,
+} from "../../../middleware/limits";
 import type { AppVariables } from "../../../types";
 import {
   apiHeaders,
   type Ctx,
+  estimateUpstreamCost,
   logRequest,
   MODEL_POOL,
   type ProxyReq,
@@ -28,7 +30,37 @@ import {
   standardLimiter,
 } from "../shared";
 
+// Conservative fixed reservation for image generation. Real cost replaces
+// this on log; the point is just to make a single oversized burst impossible
+// when the user is already near their daily cap.
+const IMAGE_GENERATION_RESERVATION = 0.25;
+const UPSTREAM_HEADER_TIMEOUT_MS = 5_000;
+
 const general = new Hono<{ Variables: AppVariables }>();
+
+async function fetchWithHeaderTimeout(
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    UPSTREAM_HEADER_TIMEOUT_MS,
+  );
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new HTTPException(504, {
+        message: `Upstream did not return response headers within ${UPSTREAM_HEADER_TIMEOUT_MS}ms`,
+      });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 type ChatMessage = {
   role?: string;
@@ -129,12 +161,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
 
     const flagSettings = await getUserFlagSettings(user.id);
     const reviewDecision = shouldReview(
-      user.id,
-      (user.reviewStatus || "normal") as
-        | "normal"
-        | "flagged"
-        | "strict"
-        | "banned",
+      user.reviewStatus,
       flagSettings.optInForcedReview,
     );
     const countViolations = !flagSettings.optInForcedReview;
@@ -148,7 +175,7 @@ async function handleProxy(c: Ctx, endpoint: string) {
     if (reviewDecision.blocking && inputContent.length > 0) {
       let inputResult = null;
       try {
-        inputResult = await moderate(inputContent, { allowSkip: false });
+        inputResult = await moderate(inputContent);
       } catch (_error) {
         throw new HTTPException(503, { message: "Moderation unavailable" });
       }
@@ -172,14 +199,22 @@ async function handleProxy(c: Ctx, endpoint: string) {
       }
     }
 
-    const res = await fetch(`${env.OPENAI_API_URL}/v1/${endpoint}`, {
-      method: "POST",
-      headers: apiHeaders(c),
-      body: JSON.stringify(body),
-    });
+    // Reserve against the daily limit only once the request has passed the
+    // moderation gate, so rejected requests never hold a reservation.
+    await reserveCharge(c, await estimateUpstreamCost(body));
+
+    const res = await fetchWithHeaderTimeout(
+      `${env.OPENAI_API_URL}/v1/${endpoint}`,
+      {
+        method: "POST",
+        headers: apiHeaders(c),
+        body: JSON.stringify(body),
+      },
+    );
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
+      await releasePendingCharge(c);
       return c.json(errorData, res.status as ContentfulStatusCode);
     }
 
@@ -191,9 +226,9 @@ async function handleProxy(c: Ctx, endpoint: string) {
       const outputContent = outputSegments.join(" ").trim();
 
       if (outputContent) {
-        const localResult = localModerationCheck([outputContent]);
-        if (localResult.flagged) {
-          const categories = getFlaggedCategories(localResult);
+        const outputResult = await moderate([outputContent]);
+        if (outputResult.flagged) {
+          const categories = getFlaggedCategories(outputResult);
           await recordViolationEvent(
             user.id,
             "output",
@@ -209,12 +244,6 @@ async function handleProxy(c: Ctx, endpoint: string) {
             400,
           );
         }
-        // Full review in background since local check passed
-        reviewContent(user.id, inputContent, outputContent, {
-          countTowardsUser: countViolations,
-          reviewInput: false,
-          reviewOutput: true,
-        }).catch(console.error);
       }
 
       await logRequest(c, body, data, resolveUsage(data), Date.now() - start);
@@ -323,9 +352,9 @@ async function handleProxy(c: Ctx, endpoint: string) {
 
         // Async background review for blocking streaming
         if (outputContent.trim().length > 0) {
-          const localResult = localModerationCheck([outputContent]);
-          if (localResult.flagged) {
-            const categories = getFlaggedCategories(localResult);
+          const outputResult = await moderate([outputContent]);
+          if (outputResult.flagged) {
+            const categories = getFlaggedCategories(outputResult);
             await recordViolationEvent(
               user.id,
               "output",
@@ -333,12 +362,6 @@ async function handleProxy(c: Ctx, endpoint: string) {
               outputContent,
               { countTowardsUser: countViolations },
             );
-          } else {
-            reviewContent(user.id, inputContent, outputContent, {
-              countTowardsUser: countViolations,
-              reviewInput: false,
-              reviewOutput: true,
-            }).catch(console.error);
           }
         }
       });
@@ -421,14 +444,19 @@ async function handleProxy(c: Ctx, endpoint: string) {
 }
 
 for (const ep of ["chat/completions", "responses", "embeddings"])
-  general.post(`/${ep}`, requireApiKey, standardLimiter, (c) =>
-    handleProxy(c, ep),
+  general.post(
+    `/${ep}`,
+    requireApiKey,
+    standardLimiter,
+    checkSpendingLimit,
+    (c) => handleProxy(c, ep),
   );
 
 general.post(
   "/images/generations",
   requireApiKey,
   standardLimiter,
+  checkSpendingLimit,
   async (c) => {
     const start = Date.now();
     const body = (await c.req.json()) as {
@@ -441,6 +469,8 @@ general.post(
       body.model || allowedImageModels[0],
       allowedImageModels,
     );
+
+    await reserveCharge(c, IMAGE_GENERATION_RESERVATION);
 
     const res = await fetch(`${env.OPENAI_API_URL}/v1/chat/completions`, {
       method: "POST",
@@ -458,7 +488,10 @@ general.post(
       choices?: { message?: { images?: { image_url?: { url?: string } }[] } }[];
       usage?: Record<string, number>;
     };
-    if (!res.ok) return c.json(data, res.status as ContentfulStatusCode);
+    if (!res.ok) {
+      await releasePendingCharge(c);
+      return c.json(data, res.status as ContentfulStatusCode);
+    }
 
     const images = (data.choices || []).flatMap((ch) =>
       (ch.message?.images || []).flatMap((img) => {

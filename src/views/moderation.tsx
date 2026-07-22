@@ -1,4 +1,5 @@
-import type { User, Violation } from "../types";
+import type { Violation } from "../db/schema";
+import type { User } from "../types";
 import { Header } from "./components/Header";
 import { Layout } from "./layout";
 

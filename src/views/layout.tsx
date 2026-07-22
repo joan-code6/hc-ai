@@ -3,6 +3,15 @@ import type { Child } from "hono/jsx";
 import { env } from "../env";
 import type { User } from "../types";
 
+// JSON-encode a value for safe inlining inside a <script> tag. Escapes `<`,
+// `>`, and U+2028/U+2029 to prevent breaking out of the script context.
+const jsonForScript = (value: unknown): string =>
+  JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+
 type LayoutProps = {
   children: Child;
   title: string;
@@ -122,11 +131,11 @@ export const Layout = ({
                 });
                 ${
                   user
-                    ? `posthog.identify('${user.slackId}', {
-                    userId: '${user.id}',
-                    email: ${user.email ? `'${user.email}'` : "null"},
-                    name: ${user.name ? `'${user.name}'` : "null"},
-                    isIdvVerified: ${user.isIdvVerified},
+                    ? `posthog.identify(${jsonForScript(user.slackId)}, {
+                    userId: ${jsonForScript(user.id)},
+                    email: ${user.email ? jsonForScript(user.email) : "null"},
+                    name: ${user.name ? jsonForScript(user.name) : "null"},
+                    isIdvVerified: ${user.isIdvVerified ? "true" : "false"},
                   });`
                     : ""
                 }

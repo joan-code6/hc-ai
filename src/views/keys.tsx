@@ -109,7 +109,7 @@ export const ApiKeysList = ({ apiKeys }: { apiKeys: DashboardApiKey[] }) => {
           render: (row) => (
             <button
               type="button"
-              x-on:click={`revokeKeyId = '${row.id}'; revokeKeyName = '${row.name}'; revokeModal = true`}
+              x-on:click={`revokeKeyId = ${JSON.stringify(row.id)}; revokeKeyName = ${JSON.stringify(row.name)}; revokeModal = true`}
               class="px-3 py-2 text-xs font-medium rounded-full bg-transparent text-red-500 border-2 border-red-500/30 hover:bg-red-500/10 transition-all"
             >
               Revoke

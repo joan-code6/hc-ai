@@ -1,1 +1,0 @@
-ALTER TABLE "content_violations" ADD COLUMN "content" text;

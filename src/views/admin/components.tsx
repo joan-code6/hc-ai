@@ -1,5 +1,3 @@
-import type { User } from "../types";
-
 export type AdminBannedUser = {
   id: string;
   email: string | null;

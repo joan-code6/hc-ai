@@ -9,8 +9,9 @@ import {
   allowedImageModels,
   allowedLanguageModels,
 } from "../../env";
-import { openRouterHeaders } from "../../lib/models";
+import { fetchLanguageModels, openRouterHeaders } from "../../lib/models";
 import { captureEvent } from "../../lib/posthog";
+import { releasePendingCharge } from "../../middleware/limits";
 import type { AppVariables } from "../../types";
 
 export type Ctx = Context<{ Variables: AppVariables }>;
@@ -38,7 +39,49 @@ export type ProxyReq = {
   stream?: boolean;
   user?: string;
   usage?: { include: boolean };
+  messages?: unknown;
+  input?: unknown;
+  prompt?: unknown;
+  max_tokens?: number;
+  max_completion_tokens?: number;
+  max_output_tokens?: number;
 };
+
+// Conservative upper-bound estimate of what a chat / responses / embeddings
+// call will cost, used to reserve capacity against the user's daily limit
+// BEFORE the upstream request is dispatched. We err on the high side: it's
+// fine to over-reserve (the real cost replaces the estimate on log), but
+// under-reserving lets users blow past their cap on a single big request or
+// a burst of concurrent requests.
+export async function estimateUpstreamCost(body: ProxyReq): Promise<number> {
+  try {
+    const models = await fetchLanguageModels();
+    const model = models.data.find((m) => m.id === body.model);
+    if (!model?.pricing) return 0.05;
+
+    const promptPrice = parseFloat(model.pricing.prompt || "0");
+    const completionPrice = parseFloat(model.pricing.completion || "0");
+
+    // Rough input-token estimate from the serialized payload. 3 chars/token
+    // is intentionally conservative (most tokenizers are ~4 chars/token).
+    const payload = JSON.stringify(
+      body.messages ?? body.input ?? body.prompt ?? body,
+    );
+    const inputTokens = Math.ceil(payload.length / 3);
+
+    const requestedMax =
+      body.max_tokens ?? body.max_completion_tokens ?? body.max_output_tokens;
+    const modelMax =
+      model.top_provider?.max_completion_tokens ?? model.context_length ?? 8192;
+    // If the caller didn't pin max_tokens, assume they could consume up to
+    // the model's full completion window.
+    const outputTokens = requestedMax ?? modelMax;
+
+    return inputTokens * promptPrice + outputTokens * completionPrice;
+  } catch {
+    return 0.05;
+  }
+}
 
 export const MODEL_POOL = [
   ...allowedLanguageModels,
@@ -102,7 +145,7 @@ export const apiHeaders = (c: Ctx) => ({
 //   pool.includes(model) ? model : pool[0];
 export const resolveModel = (model: string, _pool: string[]) => model;
 
-export const logRequest = (
+export const logRequest = async (
   c: Ctx,
   body: ProxyReq | Record<string, unknown>,
   resBody: unknown,
@@ -142,4 +185,6 @@ export const logRequest = (
     cost: usage.cost,
     duration: ms,
   });
+
+  await releasePendingCharge(c);
 };

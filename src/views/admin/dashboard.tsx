@@ -2,7 +2,11 @@ import type { User } from "../../types";
 import { Header } from "../components/Header";
 import { StatCard } from "../components/StatCard";
 import { Layout } from "../layout";
-import { AdminTabs, type AdminBannedUser, type ModerationStats } from "./components";
+import {
+  type AdminBannedUser,
+  AdminTabs,
+  type ModerationStats,
+} from "./components";
 
 export const AdminView = ({
   moderationStats,

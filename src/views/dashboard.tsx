@@ -3,8 +3,8 @@ import { allowedLanguageModels, env } from "../env";
 import type { Stats, User } from "../types";
 import { AgentBanner } from "./components/AgentBanner";
 import { Header } from "./components/Header";
-import { IdvBanner } from "./components/IdvBanner";
 import { AlertTriangle } from "./components/Icons";
+import { IdvBanner } from "./components/IdvBanner";
 import { StatCard } from "./components/StatCard";
 import { Layout } from "./layout";
 

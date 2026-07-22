@@ -16,7 +16,7 @@ import {
 
 export type ReviewStatus = "normal" | "flagged" | "strict" | "banned";
 
-export interface ReviewDecision {
+interface ReviewDecision {
   shouldReview: boolean;
   blocking: boolean;
   sample: boolean;
@@ -28,7 +28,6 @@ type RecordViolationOptions = {
 };
 
 export function shouldReview(
-  _userId: string,
   reviewStatus: ReviewStatus,
   optInForcedReview: boolean,
 ): ReviewDecision {

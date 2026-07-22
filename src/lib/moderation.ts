@@ -1,5 +1,7 @@
 import { env } from "../env";
-import { localModerationCheck } from "./local-moderation";
+
+// WIP see Slack: a local classifier + background moderation job is on the
+// way. For now we call the OpenAI moderation API inline.
 
 export type ModerationCategory =
   | "sexual"
@@ -17,11 +19,10 @@ export type ModerationCategory =
   | "drugs"
   | "illicit_drugs";
 
-export interface ModerationResult {
+interface ModerationResult {
   flagged: boolean;
   categories: Record<ModerationCategory, boolean>;
   categoryScores?: Record<ModerationCategory, number>;
-  skipped?: boolean;
 }
 
 interface ModerationResponse {
@@ -32,36 +33,13 @@ interface ModerationResponse {
   }[];
 }
 
-export async function trigger_review(
-  content: string[],
-  options?: { allowSkip?: boolean },
-): Promise<ModerationResult> {
-  // Prefer a moderation-specific API key/url when provided, fallback to
-  // the general OpenAI API key. If neither is set, skip moderation.
-  const modKey = env.OPENAI_MODERATION_API_KEY || env.OPENAI_API_KEY;
-  const modUrl =
-    env.OPENAI_MODERATION_API_URL || "https://api.openai.com/v1/moderations";
-  const allowSkip = options?.allowSkip ?? true;
-
-  if (!modKey) {
-    if (allowSkip) {
-      console.warn(
-        "Moderation API key is not set. Skipping content moderation.",
-      );
-      return {
-        flagged: false,
-        categories: {} as Record<ModerationCategory, boolean>,
-        skipped: true,
-      };
-    }
-    throw new Error("Moderation API key is not configured");
-  }
-
-  const request = await fetch(modUrl, {
+async function trigger_review(content: string[]): Promise<ModerationResult> {
+  // ArkType enforces both of these at startup (see env.ts).
+  const request = await fetch(env.OPENAI_MODERATION_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${modKey}`,
+      Authorization: `Bearer ${env.OPENAI_MODERATION_API_KEY}`,
     },
     body: JSON.stringify({ input: content }),
   });
@@ -113,19 +91,10 @@ export async function trigger_review(
 }
 
 /**
- * Fast local pre-filter + optional OpenAI fallback.
- * Returns immediately if local classifier flags content,
- * otherwise falls back to the OpenAI moderation API.
+ * Classify content using the OpenAI moderation API.
  */
-export async function moderate(
-  content: string[],
-  options?: { allowSkip?: boolean },
-): Promise<ModerationResult> {
-  const localResult = localModerationCheck(content);
-  if (localResult.flagged) {
-    return localResult;
-  }
-  return trigger_review(content, options);
+export async function moderate(content: string[]): Promise<ModerationResult> {
+  return trigger_review(content);
 }
 
 export function getFlaggedCategories(

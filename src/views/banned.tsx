@@ -2,7 +2,7 @@ import type { User } from "../types";
 import { Slack, Warning } from "./components/Icons";
 import { Layout } from "./layout";
 
-export type BannedViolation = {
+type BannedViolation = {
   id: string;
   category: string;
   type: string;
@@ -78,9 +78,7 @@ export const BannedView = ({ user, violations }: BannedViewProps) => {
             <h1 class="text-4xl font-bold text-brand-heading mb-4">
               You have been banned
             </h1>
-            <p class="text-xl text-brand-text/90 mb-4">
-              Hi, {user.name}
-            </p>
+            <p class="text-xl text-brand-text/90 mb-4">Hi, {user.name}</p>
             <p class="text-lg text-brand-text/80 mb-2">
               Your account has been banned from using Hack Club AI due to
               content policy violations.
@@ -112,7 +110,7 @@ export const BannedView = ({ user, violations }: BannedViewProps) => {
               username ({user.name}).
             </p>
             <a
-              href="https://slack.hackclub.com/"
+              href="https://hackclub.slack.com/app_redirect?channel=U059VC0UDEU"
               target="_blank"
               rel="noopener noreferrer"
               class="inline-flex items-center gap-2 bg-brand-primary text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-primary-hover transition-colors"

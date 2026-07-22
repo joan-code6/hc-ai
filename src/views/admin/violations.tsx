@@ -3,8 +3,8 @@ import { Header } from "../components/Header";
 import { Layout } from "../layout";
 import {
   AdminTabs,
-  StatusBadge,
   type AdminViolationWithUser,
+  StatusBadge,
 } from "./components";
 
 export const AdminViolationsView = ({

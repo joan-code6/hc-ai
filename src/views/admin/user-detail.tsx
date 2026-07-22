@@ -3,11 +3,10 @@ import { Header } from "../components/Header";
 import { StatCard } from "../components/StatCard";
 import { Layout } from "../layout";
 import {
-  AdminTabs,
-  StatusBadge,
   type AdminUserDetail,
   type AdminUserStats,
   type AdminViolationWithLog,
+  StatusBadge,
 } from "./components";
 
 export const AdminUserView = ({
@@ -22,11 +21,7 @@ export const AdminUserView = ({
   currentUser: User;
 }) => {
   return (
-    <Layout
-      title={`User: ${user.name}`}
-      includeHtmx
-      includeAlpine
-    >
+    <Layout title={`User: ${user.name}`} includeHtmx includeAlpine>
       <Header title="Admin" user={currentUser} isAdmin />
       <div class="w-full max-w-7xl mx-auto px-4 py-8">
         {/* Breadcrumbs */}
@@ -42,18 +37,14 @@ export const AdminUserView = ({
             Users
           </a>
           <span class="text-brand-border">/</span>
-          <span class="text-brand-heading font-medium">
-            {user.name}
-          </span>
+          <span class="text-brand-heading font-medium">{user.name}</span>
         </div>
 
         {/* User Header */}
         <div class="bg-brand-surface border-2 border-brand-border rounded-2xl p-6 mb-8">
           <div class="flex justify-between items-start mb-4">
             <div>
-              <h1 class="text-2xl font-bold text-brand-heading">
-                {user.name}
-              </h1>
+              <h1 class="text-2xl font-bold text-brand-heading">{user.name}</h1>
               <p class="text-brand-text text-sm mt-1">{user.email}</p>
               {user.slackId && (
                 <p class="text-brand-text text-sm">Slack: {user.slackId}</p>

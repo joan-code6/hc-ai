@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/bun";
 import { count, desc, eq, gte, ilike, or } from "drizzle-orm";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { db } from "../db";
 import { contentViolations, users } from "../db/schema";
 import {
@@ -8,6 +9,7 @@ import {
   getAllViolations,
   getUserViolationStats,
   getUserViolationsWithLogs,
+  type ReviewStatus,
   recomputeUserCounts,
 } from "../lib/review";
 import { requireAdmin } from "../middleware/admin";
@@ -21,6 +23,16 @@ import {
 } from "../views/admin";
 
 const admin = new Hono<{ Variables: AppVariables }>();
+
+const REVIEW_STATUSES: ReviewStatus[] = [
+  "normal",
+  "flagged",
+  "strict",
+  "banned",
+];
+
+const isReviewStatus = (value: string): value is ReviewStatus =>
+  (REVIEW_STATUSES as string[]).includes(value);
 
 type AdminUserSearchResult = {
   id: string;
@@ -187,6 +199,9 @@ admin.get("/users", requireAuth, requireAdmin, async (c) => {
       .orderBy(desc(users.createdAt))
       .limit(200);
   } else if (status !== "all") {
+    if (!isReviewStatus(status)) {
+      throw new HTTPException(400, { message: "Invalid status filter" });
+    }
     results = await db
       .select({
         id: users.id,

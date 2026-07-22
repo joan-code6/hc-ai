@@ -3,8 +3,8 @@ import { Header } from "../components/Header";
 import { Layout } from "../layout";
 import {
   AdminTabs,
-  StatusBadge,
   type AdminUserSearchResult,
+  StatusBadge,
 } from "./components";
 
 export const AdminUsersView = ({
